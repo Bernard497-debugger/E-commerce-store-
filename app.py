@@ -1,14 +1,14 @@
 import os
 import json
 from functools import wraps
-from flask import Flask, request, jsonify, render_template_string, redirect, url_for, Response
+from flask import Flask, request, jsonify, render_template_string, Response
 import cloudinary
 import cloudinary.uploader
 
 app = Flask(__name__)
 
 # ------------------------
-# Cloudinary configuration from environment
+# Cloudinary configuration (from environment variables)
 # ------------------------
 cloudinary.config(
     cloud_name=os.environ.get("CLOUDINARY_NAME"),
@@ -18,7 +18,7 @@ cloudinary.config(
 )
 
 # ------------------------
-# Basic admin authentication
+# Admin authentication
 # ------------------------
 ADMIN_USERNAME = os.environ.get("ADMIN_USER", "admin")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASS", "password")
@@ -42,7 +42,7 @@ def requires_auth(f):
     return decorated
 
 # ------------------------
-# JSON file for products
+# JSON products storage
 # ------------------------
 PRODUCTS_FILE = "products.json"
 if not os.path.exists(PRODUCTS_FILE):
