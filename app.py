@@ -62,36 +62,81 @@ USER_HTML = """
 body{font-family:Arial,sans-serif;background:#f4f6f8;margin:0;padding:0;}
 header{background:#111827;color:#fff;padding:15px;text-align:center;}
 main{max-width:1000px;margin:30px auto;}
+#filters{margin-bottom:20px;}
+button.filter{padding:8px 12px;margin:2px;background:#2563eb;color:#fff;border:none;border-radius:8px;cursor:pointer;}
+button.filter:hover{background:#1d4ed8;}
 .product-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:15px;}
 .product{background:#fff;padding:15px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1);text-align:center;}
 .product img{width:100%;height:150px;object-fit:cover;border-radius:8px;}
-button{margin-top:10px;padding:10px 15px;background:#2563eb;color:#fff;border:none;border-radius:8px;cursor:pointer;}
-button:hover{background:#1d4ed8;}
+button.buy{margin-top:10px;padding:10px 15px;background:#10b981;color:#fff;border:none;border-radius:8px;cursor:pointer;}
+button.buy:hover{background:#059669;}
+#search{width:100%;padding:10px;margin-bottom:20px;border-radius:8px;border:1px solid #ccc;font-size:16px;}
 </style>
 </head>
 <body>
 <header><h1>Khali Store</h1></header>
 <main>
+<input type="text" id="search" placeholder="Search products...">
+<div id="filters"></div>
 <div class="product-grid" id="products"></div>
 </main>
 <script>
+let products=[];
+
 async function loadProducts(){
     const res = await fetch('/api/products');
-    const data = await res.json();
+    products = await res.json();
+    renderFilters();
+    renderProducts();
+}
+
+function renderFilters(){
+    const container = document.getElementById('filters');
+    const categories = [...new Set(products.map(p=>p.category).filter(c=>c))];
+    container.innerHTML = '<button class="filter" onclick="filterByCategory(\'\')">All</button>';
+    categories.forEach(cat=>{
+        const btn = document.createElement('button');
+        btn.className='filter';
+        btn.textContent=cat;
+        btn.onclick=()=>filterByCategory(cat);
+        container.appendChild(btn);
+    });
+}
+
+function filterByCategory(category){
+    renderProducts(category, document.getElementById('search').value);
+}
+
+document.getElementById('search').addEventListener('input', e=>{
+    renderProducts('', e.target.value);
+});
+
+function renderProducts(category='', search=''){
     const container = document.getElementById('products');
     container.innerHTML='';
-    data.forEach(p=>{
+    let filtered = products;
+    if(category) filtered = filtered.filter(p=>p.category===category);
+    if(search) filtered = filtered.filter(p=>p.name.toLowerCase().includes(search.toLowerCase())||p.description.toLowerCase().includes(search.toLowerCase()));
+    filtered.forEach(p=>{
         const div = document.createElement('div');
         div.className='product';
         div.innerHTML=`
         <img src="${p.image_url}" alt="${p.name}">
         <h3>${p.name}</h3>
         <p>$${p.price.toFixed(2)}</p>
-        <small>${p.description}</small>
-        <button>Add to Cart</button>`;
+        <small>${p.description}</small><br>
+        <button class="buy" onclick="buyWhatsApp('${p.name}',${p.price})">Buy via WhatsApp</button>`;
         container.appendChild(div);
     });
 }
+
+function buyWhatsApp(name, price){
+    const phone = "YOUR_PHONE_NUMBER"; // replace with your WhatsApp number
+    const msg = `Hello, I want to buy: ${name} for $${price.toFixed(2)}`;
+    const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
+    window.open(waUrl,'_blank');
+}
+
 loadProducts();
 </script>
 </body>
@@ -113,7 +158,7 @@ body{font-family:Arial,sans-serif;background:#f4f6f8;margin:0;padding:0;}
 header{background:#111827;color:#fff;padding:15px;text-align:center;}
 main{max-width:800px;margin:30px auto;background:#fff;padding:20px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1);}
 form{display:flex;flex-direction:column;gap:15px;}
-input,textarea{padding:10px;border:1px solid #ddd;border-radius:8px;font-size:14px;}
+input,textarea,select{padding:10px;border:1px solid #ddd;border-radius:8px;font-size:14px;}
 button{background:#2563eb;color:#fff;padding:12px;border:none;border-radius:8px;font-size:16px;cursor:pointer;}
 button:hover{background:#1d4ed8;}
 #message{margin-top:10px;font-size:14px;}
@@ -129,6 +174,7 @@ button:hover{background:#1d4ed8;}
 <form id="productForm" enctype="multipart/form-data">
 <input type="text" name="name" placeholder="Product Name" required>
 <input type="number" name="price" placeholder="Price" step="0.01" required>
+<input type="text" name="category" placeholder="Category">
 <textarea name="description" placeholder="Description"></textarea>
 <input type="file" name="image" accept="image/*" required>
 <button type="submit">Add Product</button>
@@ -149,7 +195,7 @@ async function loadProducts(){
         data.forEach(p=>{
             const div=document.createElement('div');
             div.className='product';
-            div.innerHTML=`<img src="${p.image_url}" alt="${p.name}"><div><strong>${p.name}</strong><br>$${p.price.toFixed(2)}<br><small>${p.description}</small></div>`;
+            div.innerHTML=`<img src="${p.image_url}" alt="${p.name}"><div><strong>${p.name}</strong><br>${p.category ? p.category+'<br>' : ''}$${p.price.toFixed(2)}<br><small>${p.description}</small></div>`;
             productsDiv.appendChild(div);
         });
     } catch(err) {
@@ -208,6 +254,7 @@ def add_product():
     try:
         name = request.form['name']
         price = float(request.form['price'])
+        category = request.form.get('category', '')
         description = request.form.get('description', '')
 
         file = request.files.get('image')
@@ -223,6 +270,7 @@ def add_product():
         products.append({
             "name": name,
             "price": price,
+            "category": category,
             "description": description,
             "image_url": image_url
         })
