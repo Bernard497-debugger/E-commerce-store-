@@ -1,113 +1,197 @@
 import os
-from flask import Flask, request, redirect, jsonify, render_template_string
+from flask import Flask, request, jsonify, render_template_string
 from flask_sqlalchemy import SQLAlchemy
 import cloudinary
 import cloudinary.uploader
-from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 
-# ==========================
-# 1️⃣ Database Configuration (PostgreSQL via env vars)
-# ==========================
-DB_USERNAME = os.environ.get("DB_USERNAME")
-DB_PASSWORD = os.environ.get("DB_PASSWORD")
-DB_HOST     = os.environ.get("DB_HOST")
-DB_PORT     = os.environ.get("DB_PORT")
-DB_NAME     = os.environ.get("DB_NAME")
-
-app.config['SQLALCHEMY_DATABASE_URI'] = f'postgresql://{DB_USERNAME}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
+# ------------------------
+# Database Configuration
+# ------------------------
+app.config['SQLALCHEMY_DATABASE_URI'] = (
+    f"postgresql://{os.environ['DB_USERNAME']}:{os.environ['DB_PASSWORD']}@"
+    f"{os.environ['DB_HOST']}:{os.environ['DB_PORT']}/{os.environ['DB_NAME']}"
+)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
-# ==========================
-# 2️⃣ Cloudinary Configuration via env var
-# ==========================
-cloudinary.config(cloudinary_url=os.environ.get("CLOUDINARY_URL"))
+# ------------------------
+# Cloudinary Configuration
+# ------------------------
+cloudinary.config(
+    cloud_name=os.environ.get("CLOUDINARY_URL").split("@")[1],
+    api_key=os.environ.get("CLOUDINARY_URL").split(":")[1].replace("//", ""),
+    api_secret=os.environ.get("CLOUDINARY_URL").split(":")[2].split("@")[0],
+    secure=True
+)
 
-# ==========================
-# 3️⃣ Database Model
-# ==========================
+# ------------------------
+# Product Model
+# ------------------------
 class Product(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
-    description = db.Column(db.String(300), nullable=False)
     price = db.Column(db.Float, nullable=False)
-    image_url = db.Column(db.String(500), nullable=False)
+    description = db.Column(db.String(200))
+    image_url = db.Column(db.String(200))  # Cloudinary URL
 
-# ==========================
-# 4️⃣ HTML Templates (Inline)
-# ==========================
-# Paste your previous INDEX_HTML and ADMIN_HTML here
-INDEX_HTML = """[PASTE YOUR INDEX_HTML HERE]"""
-ADMIN_HTML = """[PASTE YOUR ADMIN_HTML HERE]"""
-
-# ==========================
-# 5️⃣ Routes
-# ==========================
-@app.route('/')
-def index():
-    return render_template_string(INDEX_HTML)
-
-@app.route('/api/products')
-def get_products():
-    products = Product.query.all()
-    return jsonify([{
-        "id": p.id,
-        "name": p.name,
-        "description": p.description,
-        "price": p.price,
-        "image_url": p.image_url
-    } for p in products])
-
-@app.route('/admin', methods=['GET', 'POST'])
-def admin():
-    if request.method == 'POST' and 'image' in request.files:
-        name = request.form['name']
-        description = request.form['description']
-        price = float(request.form['price'])
-        image = request.files['image']
-
-        # Upload to Cloudinary
-        upload_result = cloudinary.uploader.upload(image)
-        image_url = upload_result['secure_url']
-
-        # Save product in DB
-        new_product = Product(
-            name=name,
-            description=description,
-            price=price,
-            image_url=image_url
-        )
-        db.session.add(new_product)
-        db.session.commit()
-        return redirect('/admin')
-
-    products = Product.query.all()
-    return render_template_string(ADMIN_HTML, products=products)
-
-@app.route('/delete/<int:id>', methods=['POST'])
-def delete_product(id):
-    product = Product.query.get(id)
-    if product:
-        # Optionally delete image from Cloudinary
-        try:
-            public_id = product.image_url.split('/')[-1].split('.')[0]
-            cloudinary.uploader.destroy(public_id)
-        except Exception as e:
-            print(f"Cloudinary delete error: {e}")
-        db.session.delete(product)
-        db.session.commit()
-    return redirect('/admin')
-
-# ==========================
-# 6️⃣ Initialize DB
-# ==========================
 with app.app_context():
     db.create_all()
 
-# ==========================
-# 7️⃣ Run App
-# ==========================
+# ------------------------
+# User Page
+# ------------------------
+USER_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+<title>Khali Store</title>
+<style>
+body{font-family:Arial,sans-serif;background:#f4f6f8;margin:0;padding:0;}
+header{background:#111827;color:#fff;padding:15px;text-align:center;}
+main{max-width:1000px;margin:30px auto;}
+.product-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:15px;}
+.product{background:#fff;padding:15px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1);text-align:center;}
+.product img{width:100%;height:150px;object-fit:cover;border-radius:8px;}
+button{margin-top:10px;padding:10px 15px;background:#2563eb;color:#fff;border:none;border-radius:8px;cursor:pointer;}
+button:hover{background:#1d4ed8;}
+</style>
+</head>
+<body>
+<header><h1>Khali Store</h1></header>
+<main>
+<div class="product-grid" id="products"></div>
+</main>
+<script>
+async function loadProducts(){
+    const res = await fetch('/api/products');
+    const data = await res.json();
+    const container = document.getElementById('products');
+    container.innerHTML='';
+    data.forEach(p=>{
+        const div = document.createElement('div');
+        div.className='product';
+        div.innerHTML=`
+        <img src="${p.image_url}" alt="${p.name}">
+        <h3>${p.name}</h3>
+        <p>$${p.price.toFixed(2)}</p>
+        <small>${p.description}</small>
+        <button>Add to Cart</button>`;
+        container.appendChild(div);
+    });
+}
+loadProducts();
+</script>
+</body>
+</html>
+"""
+
+# ------------------------
+# Admin Page
+# ------------------------
+ADMIN_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+<title>Khali Commerce Admin</title>
+<style>
+body{font-family:Arial,sans-serif;background:#f4f6f8;margin:0;padding:0;}
+header{background:#111827;color:#fff;padding:15px;text-align:center;}
+main{max-width:800px;margin:30px auto;background:#fff;padding:20px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1);}
+form{display:flex;flex-direction:column;gap:15px;}
+input,textarea{padding:10px;border:1px solid #ddd;border-radius:8px;font-size:14px;}
+button{background:#2563eb;color:#fff;padding:12px;border:none;border-radius:8px;font-size:16px;cursor:pointer;}
+button:hover{background:#1d4ed8;}
+#message{margin-top:10px;font-size:14px;}
+#products{margin-top:20px;}
+.product{display:flex;align-items:center;background:#f9fafb;padding:10px;margin-bottom:10px;border-radius:8px;gap:10px;}
+.product img{width:60px;height:60px;object-fit:cover;border-radius:6px;}
+</style>
+</head>
+<body>
+<header><h1>Khali Commerce Admin</h1></header>
+<main>
+<h2>Add New Product</h2>
+<form id="productForm" enctype="multipart/form-data">
+<input type="text" name="name" placeholder="Product Name" required>
+<input type="number" name="price" placeholder="Price" step="0.01" required>
+<textarea name="description" placeholder="Description"></textarea>
+<input type="file" name="image" accept="image/*" required>
+<button type="submit">Add Product</button>
+</form>
+<p id="message"></p>
+<div id="product-list"><h2>Current Products</h2><div id="products"></div></div>
+</main>
+<script>
+const form=document.getElementById('productForm');
+const message=document.getElementById('message');
+const productsDiv=document.getElementById('products');
+
+async function loadProducts(){
+    const res=await fetch('/api/products');
+    const data=await res.json();
+    productsDiv.innerHTML='';
+    data.forEach(p=>{
+        const div=document.createElement('div');
+        div.className='product';
+        div.innerHTML=`<img src="${p.image_url}" alt="${p.name}"><div><strong>${p.name}</strong><br>$${p.price.toFixed(2)}<br><small>${p.description}</small></div>`;
+        productsDiv.appendChild(div);
+    });
+}
+loadProducts();
+
+form.addEventListener('submit',async e=>{
+    e.preventDefault();
+    const formData=new FormData(form);
+    const res=await fetch('/api/products',{method:'POST',body:formData});
+    const result=await res.json();
+    message.textContent=result.message;
+    form.reset();
+    loadProducts();
+});
+</script>
+</body>
+</html>
+"""
+
+# ------------------------
+# Routes
+# ------------------------
+@app.route('/')
+def user_page():
+    return render_template_string(USER_HTML)
+
+@app.route('/admin')
+def admin_page():
+    return render_template_string(ADMIN_HTML)
+
+@app.route('/api/products', methods=['GET'])
+def get_products():
+    products = Product.query.all()
+    return jsonify([
+        {"id": p.id, "name": p.name, "price": p.price, "description": p.description, "image_url": p.image_url}
+        for p in products
+    ])
+
+@app.route('/api/products', methods=['POST'])
+def add_product():
+    name = request.form['name']
+    price = request.form['price']
+    description = request.form.get('description', '')
+
+    file = request.files['image']
+    upload_result = cloudinary.uploader.upload(file)
+    image_url = upload_result['secure_url']
+
+    product = Product(name=name, price=float(price), description=description, image_url=image_url)
+    db.session.add(product)
+    db.session.commit()
+
+    return jsonify({"message": "Product added successfully!"})
+
+# ------------------------
+# Run
+# ------------------------
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000)
