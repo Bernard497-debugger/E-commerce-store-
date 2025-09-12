@@ -1,8 +1,8 @@
 import os
-import json
 from flask import Flask, request, jsonify, render_template_string
 import cloudinary
 import cloudinary.uploader
+import cloudinary.api
 
 app = Flask(__name__)
 
@@ -15,22 +15,6 @@ cloudinary.config(
     api_secret=os.environ.get("CLOUDINARY_URL").split(":")[2].split("@")[0],
     secure=True
 )
-
-# ------------------------
-# JSON file to store products
-# ------------------------
-PRODUCTS_FILE = "products.json"
-if not os.path.exists(PRODUCTS_FILE):
-    with open(PRODUCTS_FILE, "w") as f:
-        json.dump([], f)
-
-def load_products():
-    with open(PRODUCTS_FILE, "r") as f:
-        return json.load(f)
-
-def save_products(products):
-    with open(PRODUCTS_FILE, "w") as f:
-        json.dump(products, f, indent=2)
 
 # ------------------------
 # USER page HTML
@@ -149,7 +133,7 @@ form.addEventListener('submit',async e=>{
 """
 
 # ------------------------
-# Routes
+# API Routes
 # ------------------------
 @app.route('/')
 def user_page():
@@ -161,23 +145,32 @@ def admin_page():
 
 @app.route('/api/products', methods=['GET'])
 def get_products():
-    return jsonify(load_products())
+    # Fetch all images with metadata from Cloudinary folder "khali_store"
+    resources = cloudinary.api.resources(type="upload", prefix="khali_store", max_results=500)["resources"]
+    products = []
+    for r in resources:
+        meta = r.get("context", {}).get("custom", {})
+        products.append({
+            "name": meta.get("name", "Unnamed"),
+            "price": float(meta.get("price", 0)),
+            "description": meta.get("description", ""),
+            "image_url": r["secure_url"]
+        })
+    return jsonify(products)
 
 @app.route('/api/products', methods=['POST'])
 def add_product():
     name = request.form['name']
-    price = float(request.form['price'])
+    price = request.form['price']
     description = request.form.get('description', '')
 
     file = request.files['image']
-    upload_result = cloudinary.uploader.upload(file)
-    image_url = upload_result['secure_url']
-
-    product = {"name": name, "price": price, "description": description, "image_url": image_url}
-    
-    products = load_products()
-    products.append(product)
-    save_products(products)
+    # Upload to Cloudinary in folder "khali_store" with metadata
+    upload_result = cloudinary.uploader.upload(
+        file,
+        folder="khali_store",
+        context=f"name={name}|price={price}|description={description}"
+    )
 
     return jsonify({"message": "Product added successfully!"})
 
