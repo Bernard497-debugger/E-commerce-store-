@@ -3,6 +3,7 @@ from functools import wraps
 from flask import Flask, request, jsonify, render_template_string, Response
 import cloudinary
 import cloudinary.uploader
+import cloudinary.api
 
 app = Flask(__name__)
 
@@ -15,11 +16,6 @@ cloudinary.config(
     api_secret=os.environ.get("CLOUDINARY_SECRET"),
     secure=True
 )
-
-# ------------------------
-# In-memory product storage
-# ------------------------
-products = []
 
 # ------------------------
 # Admin authentication
@@ -46,7 +42,7 @@ def requires_auth(f):
     return decorated
 
 # ------------------------
-# USER page HTML
+# User page HTML
 # ------------------------
 USER_HTML = """
 {% raw %}
@@ -141,7 +137,7 @@ loadProducts();
 """
 
 # ------------------------
-# ADMIN page HTML
+# Admin page HTML
 # ------------------------
 ADMIN_HTML = """
 {% raw %}
@@ -241,7 +237,21 @@ def admin_page():
 
 @app.route('/api/products', methods=['GET'])
 def get_products():
-    return jsonify(products)
+    try:
+        res = cloudinary.api.resources(type='upload', prefix='khali_store')
+        products_list = []
+        for r in res.get('resources', []):
+            metadata = r.get('context', {}).get('custom', {})
+            products_list.append({
+                "name": metadata.get('name', 'Unnamed'),
+                "price": float(metadata.get('price', 0)),
+                "category": metadata.get('category', ''),
+                "description": metadata.get('description', ''),
+                "image_url": r['secure_url']
+            })
+        return jsonify(products_list)
+    except Exception as e:
+        return jsonify({"message": f"Failed to fetch products: {str(e)}"}), 500
 
 @app.route('/api/products', methods=['POST'])
 @requires_auth
@@ -256,16 +266,11 @@ def add_product():
         if not file:
             return jsonify({"message":"No image uploaded!"}), 400
 
-        upload_result = cloudinary.uploader.upload(file, folder="khali_store")
-        image_url = upload_result['secure_url']
-
-        products.append({
-            "name": name,
-            "price": price,
-            "category": category,
-            "description": description,
-            "image_url": image_url
-        })
+        upload_result = cloudinary.uploader.upload(
+            file,
+            folder="khali_store",
+            context=f"name={name}|price={price}|category={category}|description={description}"
+        )
 
         return jsonify({"message": "Product added successfully!"})
     except Exception as e:
