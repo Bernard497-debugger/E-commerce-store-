@@ -9,12 +9,15 @@ app = Flask(__name__)
 # ------------------------
 # Cloudinary configuration
 # ------------------------
-cloudinary.config(
-    cloud_name=os.environ.get("CLOUDINARY_NAME"),
-    api_key=os.environ.get("CLOUDINARY_KEY"),
-    api_secret=os.environ.get("CLOUDINARY_SECRET"),
-    secure=True
-)
+try:
+    cloudinary.config(
+        cloud_name=os.environ.get("CLOUDINARY_NAME"),
+        api_key=os.environ.get("CLOUDINARY_KEY"),
+        api_secret=os.environ.get("CLOUDINARY_SECRET"),
+        secure=True
+    )
+except Exception as e:
+    print("Cloudinary config error:", e)
 
 # ------------------------
 # USER page HTML
@@ -106,15 +109,19 @@ const message=document.getElementById('message');
 const productsDiv=document.getElementById('products');
 
 async function loadProducts(){{
-    const res=await fetch('/api/products');
-    const data=await res.json();
-    productsDiv.innerHTML='';
-    data.forEach(p=>{{
-        const div=document.createElement('div');
-        div.className='product';
-        div.innerHTML=`<img src="${{p.image_url}}" alt="${{p.name}}"><div><strong>${{p.name}}</strong><br>$${{p.price.toFixed(2)}}<br><small>${{p.description}}</small></div>`;
-        productsDiv.appendChild(div);
-    }});
+    try {{
+        const res=await fetch('/api/products');
+        const data=await res.json();
+        productsDiv.innerHTML='';
+        data.forEach(p=>{{
+            const div=document.createElement('div');
+            div.className='product';
+            div.innerHTML=`<img src="${{p.image_url}}" alt="${{p.name}}"><div><strong>${{p.name}}</strong><br>$${{p.price.toFixed(2)}}<br><small>${{p.description}}</small></div>`;
+            productsDiv.appendChild(div);
+        }});
+    }} catch(err) {{
+        productsDiv.innerHTML='<p style="color:red;">Failed to load products.</p>';
+    }}
 }}
 loadProducts();
 
@@ -179,7 +186,7 @@ def add_product():
         return jsonify({"message":"No image uploaded!"}), 400
 
     try:
-        upload_result = cloudinary.uploader.upload(
+        cloudinary.uploader.upload(
             file,
             folder="khali_store",
             context=f"name={name}|price={price}|description={description}"
