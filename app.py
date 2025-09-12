@@ -9,12 +9,7 @@ app = Flask(__name__)
 # ------------------------
 # Cloudinary configuration
 # ------------------------
-cloudinary.config(
-    cloud_name=os.environ.get("CLOUDINARY_URL").split("@")[1],
-    api_key=os.environ.get("CLOUDINARY_URL").split(":")[1].replace("//", ""),
-    api_secret=os.environ.get("CLOUDINARY_URL").split(":")[2].split("@")[0],
-    secure=True
-)
+cloudinary.config(cloudinary_url=os.environ.get("CLOUDINARY_URL"))
 
 # ------------------------
 # USER page HTML
@@ -121,6 +116,10 @@ loadProducts();
 form.addEventListener('submit',async e=>{{
     e.preventDefault();
     const formData=new FormData(form);
+    if(!formData.get('image')){{
+        message.textContent="Please select an image!";
+        return;
+    }}
     const res=await fetch('/api/products',{{method:'POST',body:formData}});
     const result=await res.json();
     message.textContent=result.message;
@@ -164,7 +163,10 @@ def add_product():
     price = request.form['price']
     description = request.form.get('description', '')
 
-    file = request.files['image']
+    file = request.files.get('image')
+    if not file:
+        return jsonify({{"message":"No image uploaded!"}}), 400
+
     # Upload to Cloudinary in folder "khali_store" with metadata
     upload_result = cloudinary.uploader.upload(
         file,
