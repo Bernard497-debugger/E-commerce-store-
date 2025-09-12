@@ -9,7 +9,12 @@ app = Flask(__name__)
 # ------------------------
 # Cloudinary configuration
 # ------------------------
-cloudinary.config(cloudinary_url=os.environ.get("CLOUDINARY_URL"))
+cloudinary.config(
+    cloud_name=os.environ.get("CLOUDINARY_NAME"),
+    api_key=os.environ.get("CLOUDINARY_KEY"),
+    api_secret=os.environ.get("CLOUDINARY_SECRET"),
+    secure=True
+)
 
 # ------------------------
 # USER page HTML
@@ -120,11 +125,15 @@ form.addEventListener('submit',async e=>{{
         message.textContent="Please select an image!";
         return;
     }}
-    const res=await fetch('/api/products',{{method:'POST',body:formData}});
-    const result=await res.json();
-    message.textContent=result.message;
-    form.reset();
-    loadProducts();
+    try {{
+        const res=await fetch('/api/products',{{method:'POST',body:formData}});
+        const result=await res.json();
+        message.textContent=result.message;
+        form.reset();
+        loadProducts();
+    }} catch(err) {{
+        message.textContent="Upload failed!";
+    }}
 }});
 </script>
 </body>
@@ -144,18 +153,20 @@ def admin_page():
 
 @app.route('/api/products', methods=['GET'])
 def get_products():
-    # Fetch all images with metadata from Cloudinary folder "khali_store"
-    resources = cloudinary.api.resources(type="upload", prefix="khali_store", max_results=500)["resources"]
-    products = []
-    for r in resources:
-        meta = r.get("context", {}).get("custom", {})
-        products.append({{
-            "name": meta.get("name", "Unnamed"),
-            "price": float(meta.get("price", 0)),
-            "description": meta.get("description", ""),
-            "image_url": r["secure_url"]
-        }})
-    return jsonify(products)
+    try:
+        resources = cloudinary.api.resources(type="upload", prefix="khali_store", max_results=500)["resources"]
+        products = []
+        for r in resources:
+            meta = r.get("context", {}).get("custom", {})
+            products.append({
+                "name": meta.get("name", "Unnamed"),
+                "price": float(meta.get("price", 0)),
+                "description": meta.get("description", ""),
+                "image_url": r["secure_url"]
+            })
+        return jsonify(products)
+    except Exception as e:
+        return jsonify({"error": str(e), "message": "Failed to fetch products"}), 500
 
 @app.route('/api/products', methods=['POST'])
 def add_product():
@@ -165,16 +176,17 @@ def add_product():
 
     file = request.files.get('image')
     if not file:
-        return jsonify({{"message":"No image uploaded!"}}), 400
+        return jsonify({"message":"No image uploaded!"}), 400
 
-    # Upload to Cloudinary in folder "khali_store" with metadata
-    upload_result = cloudinary.uploader.upload(
-        file,
-        folder="khali_store",
-        context=f"name={name}|price={price}|description={description}"
-    )
-
-    return jsonify({{"message": "Product added successfully!"}})
+    try:
+        upload_result = cloudinary.uploader.upload(
+            file,
+            folder="khali_store",
+            context=f"name={name}|price={price}|description={description}"
+        )
+        return jsonify({"message": "Product added successfully!"})
+    except Exception as e:
+        return jsonify({"message": f"Upload failed: {str(e)}"}), 500
 
 # ------------------------
 # Run
