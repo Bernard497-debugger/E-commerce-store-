@@ -42,7 +42,6 @@ products = []
 # ------------------------
 # HTML Templates
 # ------------------------
-
 USER_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -58,8 +57,11 @@ header img { height:50px; margin-right:15px; }
 .product { background:#2b2b2b; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.5); padding:15px; text-align:center; transition: transform 0.2s, box-shadow 0.2s; }
 .product:hover { transform:translateY(-5px); box-shadow:0 8px 20px rgba(0,0,0,0.7); }
 .product img { width:100%; height:200px; object-fit:cover; border-radius:10px; }
-#cart { position:fixed; bottom:20px; right:20px; background:black; color:white; padding:15px 20px; border-radius:50px; cursor:pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.7); transition: transform 0.2s; }
-#cart:hover { transform: scale(1.05); }
+.product button { margin-top:8px; padding:8px; width:100%; background:black; color:white; border:none; border-radius:8px; cursor:pointer; transition: transform 0.2s; }
+.product button:hover { transform:scale(1.05); }
+#cart { position:fixed; bottom:20px; right:20px; background:black; color:white; padding:15px 20px; border-radius:50px; cursor:pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.7); }
+#cart-items { margin-top:10px; max-height:250px; overflow-y:auto; }
+#checkout { margin-top:10px; display:none; width:100%; padding:10px; border:none; border-radius:8px; background:#0a0; color:white; cursor:pointer; }
 footer { background:#111; color:white; padding:20px; text-align:center; margin-top:30px; }
 h1 { text-align:center; margin:20px 0; color:white; }
 </style>
@@ -67,14 +69,17 @@ h1 { text-align:center; margin:20px 0; color:white; }
 <body>
 
 <header>
-  <img src="YOUR_LOGO_URL" alt="Khali Store Logo">
   Khali Store
 </header>
 
 <h1>Products</h1>
 <div id="products"></div>
 
-<div id="cart">🛒 View Cart</div>
+<div id="cart">
+  🛒 Cart (<span id="cart-count">0</span>)
+  <div id="cart-items" style="display:none;"></div>
+  <button id="checkout">Checkout via WhatsApp</button>
+</div>
 
 <footer>
     &copy; 2025 Khali Store. All rights reserved.
@@ -82,22 +87,64 @@ h1 { text-align:center; margin:20px 0; color:white; }
 
 <script>
 let displayed = [];
+let cart = [];
+
 async function loadProducts(){
     try{
         const res = await fetch('/api/products',{cache:"no-store"});
         const data = await res.json();
         const container = document.getElementById('products');
+        container.innerHTML='';
         data.forEach(p=>{
-            if(!displayed.includes(p.image_url)){
-                const div = document.createElement('div');
-                div.className = 'product';
-                div.innerHTML = `<img src="${p.image_url}" alt="${p.name}"><br><strong>${p.name}</strong><br>$${p.price}<br>${p.category}<br>${p.description}`;
-                container.appendChild(div);
-                displayed.push(p.image_url);
-            }
+            const div = document.createElement('div');
+            div.className='product';
+            div.innerHTML=`
+                <img src="${p.image_url}" alt="${p.name}">
+                <br><strong>${p.name}</strong><br>
+                $${p.price}<br>${p.category}<br>${p.description}
+                <button onclick="addToCart('${p.name}',${p.price})">Add to Cart</button>
+            `;
+            container.appendChild(div);
         });
-    } catch(err){ console.error("Failed to fetch products:", err); }
+    }catch(err){ console.error("Failed to fetch products:",err);}
 }
+
+function addToCart(name,price){
+    cart.push({name,price});
+    updateCart();
+}
+
+function updateCart(){
+    const count = document.getElementById('cart-count');
+    const itemsDiv = document.getElementById('cart-items');
+    const checkoutBtn = document.getElementById('checkout');
+    count.textContent = cart.length;
+
+    if(cart.length>0){
+        itemsDiv.style.display='block';
+        checkoutBtn.style.display='block';
+        itemsDiv.innerHTML='';
+        cart.forEach(item=>{
+            const div=document.createElement('div');
+            div.textContent=`${item.name} - $${item.price}`;
+            itemsDiv.appendChild(div);
+        });
+    }else{
+        itemsDiv.style.display='none';
+        checkoutBtn.style.display='none';
+    }
+}
+
+document.getElementById('checkout').addEventListener('click',()=>{
+    if(cart.length===0) return;
+    let orderText='Hello, I would like to order:%0A';
+    cart.forEach(item=>{
+        orderText+=`- ${item.name} : $${item.price}%0A`;
+    });
+    const waNumber='YOUR_WHATSAPP_NUMBER'; // replace with your number
+    window.open(`https://wa.me/${waNumber}?text=${orderText}`,'_blank');
+});
+
 loadProducts();
 setInterval(loadProducts,5000);
 </script>
@@ -112,11 +159,9 @@ ADMIN_HTML = """<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Khali Store Admin</title>
-<link href="https://fonts.googleapis.com/css2?family=Permanent+Marker&display=swap" rel="stylesheet">
 <style>
 body { margin:0; font-family: Arial, sans-serif; background:#1c1c1c; color:white; }
 header { display:flex; align-items:center; justify-content:center; background:#2b2b2b; color:white; font-family:'Permanent Marker', cursive; padding:20px 0; font-size:2rem; position:sticky; top:0; z-index:1000; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
-header img { height:50px; margin-right:15px; }
 form { max-width:500px; margin:20px auto; background:#2b2b2b; padding:20px; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.5); }
 input, button { width:100%; margin:8px 0; padding:10px; border-radius:8px; border:1px solid #555; background:#1c1c1c; color:white; }
 button { background:black; color:white; border:none; cursor:pointer; transition: transform 0.2s; }
@@ -126,12 +171,9 @@ button:hover { transform: scale(1.05); }
 </head>
 <body>
 
-<header>
-  <img src="YOUR_LOGO_URL" alt="Khali Store Logo">
-  Khali Store Admin
-</header>
+<header>Khali Store Admin</header>
 
-<h1>Admin Panel</h1>
+<h1 style="text-align:center;">Admin Panel</h1>
 <form id="form" enctype="multipart/form-data">
 <input name="name" placeholder="Product Name" required>
 <input name="price" type="number" step="0.01" placeholder="Price" required>
@@ -149,15 +191,17 @@ form.addEventListener('submit', async e=>{
     e.preventDefault();
     const fd = new FormData(form);
     try{
+        const username = prompt("Username:");
+        const password = prompt("Password:");
         const res = await fetch('/api/products',{
             method:'POST',
             body: fd,
-            headers:{'Authorization':'Basic '+btoa(prompt('Username')+':'+prompt('Password'))}
+            headers:{'Authorization':'Basic '+btoa(username+':'+password)}
         });
         const data = await res.json();
         msg.textContent = data.message;
         form.reset();
-    } catch(err){ msg.textContent = "Upload failed!"; }
+    }catch(err){ msg.textContent = "Upload failed!"; }
 });
 </script>
 
